@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cuadro vivo</title>
+
+  <!-- Librerías: A-Frame (3D) + MindAR (reconocimiento de imagen) -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: Georgia, "Times New Roman", serif; }
+    #inicio {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+      padding: 2rem; text-align: center;
+      background: #0E4D3C; color: #F2EFE6;
+    }
+    #inicio h1 { margin: 0; font-weight: normal; font-size: 2rem; line-height: 1.2; }
+    #inicio p { margin: 0; max-width: 22rem; line-height: 1.6; opacity: .85; }
+    #btn {
+      font: inherit; font-size: 1.15rem; padding: .9rem 2.2rem;
+      background: #F2EFE6; color: #0E4D3C; border: 0; border-radius: 999px; cursor: pointer;
+    }
+    #btn:focus-visible { outline: 3px solid #F2EFE6; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- Pantalla de inicio: el toque desbloquea cámara y sonido (obligatorio en iPhone) -->
+  <div id="inicio">
+    <h1>Este cuadro tiene algo que contarte</h1>
+    <p>Toca el botón, permite la cámara y apunta al cuadro.</p>
+    <button id="btn">Empezar</button>
+  </div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes; uiLoading: yes; filterMinCF: 0.0001; filterBeta: 0.001"
+    color-space="sRGB"
+    renderer="colorManagement: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <video id="vid" src="./video.mp4" preload="auto" loop playsinline webkit-playsinline crossorigin="anonymous"></video>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!--
+      AJUSTE IMPORTANTE: height = alto ÷ ancho de tu foto.
+      Ej: foto de 3000 x 4000 px (vertical) → 4000 / 3000 = 1.333
+          foto de 4000 x 3000 px (horizontal) → 3000 / 4000 = 0.75
+      El width siempre se queda en 1.
+    -->
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-video src="#vid" width="1" height="0.705" position="0 0 0"></a-video>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const video  = document.getElementById('vid');
+    const target = document.getElementById('target');
+    const scene  = document.querySelector('a-scene');
+
+    document.getElementById('btn').addEventListener('click', async () => {
+      // Desbloquear reproducción con sonido gracias al toque del usuario
+      try { await video.play(); video.pause(); video.currentTime = 0; } catch (e) {}
+      document.getElementById('inicio').remove();
+      scene.systems['mindar-image-system'].start();
+    });
+
+    // Cuando la cámara encuentra el cuadro: play. Cuando lo pierde: pausa.
+    target.addEventListener('targetFound', () => video.play());
+    target.addEventListener('targetLost',  () => video.pause());
+  </script>
+</body>
+</html>
