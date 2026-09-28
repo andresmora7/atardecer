@@ -25,6 +25,7 @@
   <div id="error"></div>
 
   <!-- El video va FUERA de a-assets para que no bloquee la carga en iPhone -->
+  <audio id="musica" src="./musica.mp3" loop preload="none"></audio>
   <video id="vid" src="./video.mp4" loop muted playsinline webkit-playsinline preload="none" style="display:none"></video>
 
   <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes; uiLoading: yes; filterMinCF: 0.0001; filterBeta: 0.001"
@@ -36,23 +37,62 @@
   </a-scene>
 
   <script>
-    const video   = document.getElementById('vid');
-    const target  = document.getElementById('target');
-    const pantalla= document.getElementById('pantalla');
-    const scene   = document.querySelector('a-scene');
-    const errBox  = document.getElementById('error');
+    const video    = document.getElementById('vid');
+    const target   = document.getElementById('target');
+    const pantalla = document.getElementById('pantalla');
+    const scene    = document.querySelector('a-scene');
+    const errBox   = document.getElementById('error');
+    const musicaTag= document.getElementById('musica'); // plan B si Web Audio falla
 
     function mostrarError(msg) { errBox.style.display = 'block'; errBox.textContent = 'Error: ' + msg; }
     window.addEventListener('error', e => mostrarError(e.message));
     window.addEventListener('unhandledrejection', e => mostrarError(e.reason && e.reason.message || e.reason));
 
-    function arrancarAR() {
-      scene.systems['mindar-image-system'].start();
+    // ---- Música en bucle SIN corte (Web Audio) ----
+    // Suena de corrido: el video puede reiniciarse mil veces y la canción nunca se entera.
+    let ctx = null, gain = null, musicaLista = null, usarTag = false, tLost = null;
+    const VOLUMEN = 0.7;
+
+    function prepararMusica() {              // se llama dentro del toque del usuario
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        ctx = new AC();
+        ctx.resume();
+        gain = ctx.createGain(); gain.gain.value = 0; gain.connect(ctx.destination);
+        musicaLista = fetch('./musica.mp3')
+          .then(r => r.arrayBuffer())
+          .then(b => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no)))
+          .then(buf => {
+            const src = ctx.createBufferSource();
+            src.buffer = buf; src.loop = true; src.connect(gain); src.start(0);
+            return ctx.suspend();
+          })
+          .catch(() => { usarTag = true; musicaTag.loop = true; });
+      } catch (e) { usarTag = true; }
     }
+
+    async function subirMusica() {
+      clearTimeout(tLost);
+      if (musicaLista) await musicaLista;
+      if (usarTag) { musicaTag.volume = VOLUMEN; musicaTag.play().catch(()=>{}); return; }
+      await ctx.resume();
+      gain.gain.cancelScheduledValues(ctx.currentTime);
+      gain.gain.setTargetAtTime(VOLUMEN, ctx.currentTime, 0.4);   // entra suave
+    }
+
+    function bajarMusica() {
+      if (usarTag) { musicaTag.pause(); return; }
+      if (!ctx) return;
+      gain.gain.cancelScheduledValues(ctx.currentTime);
+      gain.gain.setTargetAtTime(0, ctx.currentTime, 0.3);          // sale suave
+      tLost = setTimeout(() => ctx.suspend(), 1500);               // queda pausada en ese punto
+    }
+
+    function arrancarAR() { scene.systems['mindar-image-system'].start(); }
 
     document.getElementById('btn').addEventListener('click', async (ev) => {
       ev.target.disabled = true;
-      // El toque del usuario desbloquea la reproducción en iPhone
+      prepararMusica();                       // primero, mientras el toque sigue "fresco"
       video.load();
       try { await video.play(); video.pause(); video.currentTime = 0; } catch (e) {}
       pantalla.setAttribute('src', '#vid');
@@ -60,8 +100,8 @@
       if (scene.hasLoaded) arrancarAR(); else scene.addEventListener('loaded', arrancarAR, { once: true });
     });
 
-    target.addEventListener('targetFound', () => { pantalla.setAttribute('visible', true); video.play(); });
-    target.addEventListener('targetLost',  () => { pantalla.setAttribute('visible', false); video.pause(); });
+    target.addEventListener('targetFound', () => { pantalla.setAttribute('visible', true); video.play(); subirMusica(); });
+    target.addEventListener('targetLost',  () => { pantalla.setAttribute('visible', false); video.pause(); bajarMusica(); });
   </script>
 </body>
 </html>
